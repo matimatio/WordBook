@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - MONGO_URL=mongodb+srv://{matio}:{dbUserPassword}@cluster0.metlisb.mongodb.net/?retryWrites=true&w=majority # (※ここはお好みで。main.pyに書いているなら空欄でもOKです)
