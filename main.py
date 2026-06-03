@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from pymongo import MongoClient
 from pydantic import BaseModel
@@ -5,13 +7,14 @@ from bson import ObjectId
 
 app = FastAPI()
 
-DB_USER = "matio"
-DB_PASS = "dbUserPassword"  
-MONGO_URL = f"mongodb+srv://{DB_USER}:{DB_PASS}@cluster0.metlisb.mongodb.net/?retryWrites=true&w=majority"
 
+MONGO_URL = os.getenv("MONGODB_URL")
 client = MongoClient(MONGO_URL)
+
 db = client["vocab_db"]
 cards_collection = db["cards"]
+
+#http://127.0.0.1:8000/docs
 
 # ==========================================
 # 1. 画面から送られてくるデータの「形（型）」の定義
@@ -24,6 +27,9 @@ class CardUpdate(BaseModel):
     word: str
     meaning: str
     box_level: int
+
+class CardReview(BaseModel):
+    is_correct: bool
 
 # ==========================================
 # 2. 各種 窓口（APIエンドポイント）の定義
@@ -75,6 +81,7 @@ def delete_card(card_id: str):
         
     return {"status": "success", "message": "単語を正常に削除しました！"}
 
+
 @app.put("/cards/{card_id}")
 def update_card(card_id: str, card_data: CardUpdate):
     query = {"_id": ObjectId(card_id)}
@@ -93,3 +100,34 @@ def update_card(card_id: str, card_data: CardUpdate):
         return {"status": "error", "message": "指定された単語が見つかりませんでした。"}
         
     return {"status": "success", "message": "単語の情報を更新しました。"}
+
+
+@app.put("/cards/{card_id}/review")
+def review_card(card_id: str, review_data: CardReview):
+    query = {"_id": ObjectId(card_id)}
+    
+    current_card = cards_collection.find_one(query)
+    if not current_card:
+        return {"status": "error", "message": "指定された単語が見つかりませんでした。"}
+    
+    current_level = current_card.get("box_level", 1)
+    
+    if review_data.is_correct:
+        new_level = min(current_level + 1, 5)
+        message = f"正解！レベルが {current_level} から {new_level} に上がりました。"
+    else:
+        new_level = 1
+        message = "不正解…！レベル1にリセットされました。復習しましょう！"
+
+    new_values = {
+        "$set": {
+            "box_level": new_level
+        }
+    }
+    cards_collection.update_one(query, new_values)
+    
+    return {
+        "status": "success",
+        "message": message,
+        "current_level": new_level
+    }
