@@ -1,9 +1,11 @@
 import os
 
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 from pymongo import MongoClient
 from pydantic import BaseModel
 from bson import ObjectId
+from datetime import datetime, timedelta, timezone
 
 app = FastAPI()
 
@@ -35,9 +37,11 @@ class CardReview(BaseModel):
 # 2. 各種 窓口（APIエンドポイント）の定義
 # ==========================================
 
-@app.get("/")
-def read_root():
-    return {"message": "単語帳アプリのバックエンドサーバーが起動中！"}
+@app.get("/", response_class=HTMLResponse)
+def read_index():
+    # index.html の中身を読み込んで、そのままブラウザに生HTMLとして返す
+    with open("index.html", "r", encoding="utf-8") as f:
+        return f.read()
 
 
 @app.get("/cards")
@@ -121,7 +125,8 @@ def review_card(card_id: str, review_data: CardReview):
 
     new_values = {
         "$set": {
-            "box_level": new_level
+            "box_level": new_level,
+            "last_reviewed_at": datetime.now(timezone.utc)
         }
     }
     cards_collection.update_one(query, new_values)
@@ -131,3 +136,47 @@ def review_card(card_id: str, review_data: CardReview):
         "message": message,
         "current_level": new_level
     }
+
+
+@app.get("/cards/quiz")
+def get_quiz_card():
+    now = datetime.now(timezone.utc)
+    
+    all_cards = list(cards_collection.find())
+    
+    due_cards = []
+    
+    for card in all_cards:
+        card["id"] = str(card["_id"])
+        del card["_id"]
+        
+        if card.get("box_level", 0) == 0:
+            due_cards.append(card)
+            continue
+            
+        last_reviewed = card.get("last_reviewed_at")
+        if not last_reviewed:
+            due_cards.append(card)
+            continue
+            
+        if last_reviewed.tzinfo is None:
+            last_reviewed = last_reviewed.replace(tzinfo=timezone.utc)
+            
+        elapsed_time = now - last_reviewed
+        box_level = card.get("box_level", 1)
+        
+        if box_level == 1:
+            interval = timedelta(days=1)
+        elif box_level == 2:
+            interval = timedelta(days=3)
+        elif box_level == 3:
+            interval = timedelta(days=7)
+        else:
+            interval = timedelta(days=14)
+            
+        if elapsed_time >= interval:
+            due_cards.append(card)
+            
+    if not due_cards:
+        return {"message": "今日の復習はすべて完了しました！素晴らしい！", "card": None}
+    return {"message": "クイズの時間です！", "card": due_cards[0]}

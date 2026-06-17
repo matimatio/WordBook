@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>最強自作単語帳アプリ 完全版</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f5f7fb; display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding: 40px 20px; box-sizing: border-box; }
+        .container { display: flex; flex-direction: column; gap: 30px; width: 420px; }
+        .card { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.03); text-align: center; }
+        h1, h2 { font-size: 1.1rem; color: #64748b; margin-top: 0; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; }
+        .word { font-size: 2.5rem; font-weight: bold; color: #1e293b; margin: 20px 0; }
+        .meaning { font-size: 1.2rem; color: #0284c7; margin: 20px 0; display: none; font-weight: 500; }
+        
+        button { background: #0ea5e9; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 1rem; cursor: pointer; transition: background 0.2s; width: 100%; margin-top: 10px; font-weight: bold; }
+        button:hover { background: #0284c7; }
+        .btn-group { display: flex; gap: 10px; margin-top: 20px; }
+        .btn-success { background: #10b981; }
+        .btn-danger { background: #ef4444; }
+        
+        .form-group { text-align: left; margin-bottom: 15px; }
+        label { font-size: 0.8rem; color: #64748b; font-weight: bold; display: block; margin-bottom: 5px; }
+        input { width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1rem; box-sizing: border-box; }
+        input:focus { border-color: #0ea5e9; outline: none; }
+        
+        /* 一覧リスト */
+        .word-list { list-style: none; padding: 0; margin: 0; }
+        .word-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #f1f5f9; background: #fff; margin-bottom: 5px; border-radius: 8px; }
+        .word-info { flex-grow: 1; text-align: left; }
+        .word-actions { display: flex; gap: 6px; }
+        
+        /* リスト内ボタン */
+        .list-btn { color: #475569; padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; width: auto; margin: 0; font-weight: normal; }
+        .edit-btn { background: #f1f5f9; }
+        .edit-btn:hover { background: #e2e8f0; }
+        .delete-btn { background: #fee2e2; color: #dc2626; }
+        .delete-btn:hover { background: #fca5a5; }
+        
+        .badge { background: #e0f2fe; color: #0369a1; padding: 2px 10px; border-radius: 999px; font-size: 0.7rem; font-weight: bold; margin-left: 8px; }
+        .editing-now { border-color: #f59e0b !important; background-color: #fffbeb; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    
+    <div class="card">
+        <h1 id="message">Review Quiz</h1>
+        <div id="quiz-area" style="display: none;">
+            <div class="word" id="word-text">...</div>
+            <button id="answer-btn" onclick="showAnswer()">答えを見る</button>
+            <div class="meaning" id="meaning-text">...</div>
+            <div id="result-actions" style="display: none;" class="btn-group">
+                <button class="btn-success" onclick="submitResult(true)">分かった</button>
+                <button class="btn-danger" onclick="submitResult(false)">忘れた</button>
+            </div>
+        </div>
+        <button id="start-btn" onclick="loadQuiz()">クイズをスタート</button>
+    </div>
+
+    <div class="card" id="form-card">
+        <h2 id="form-title">新しい単語を追加</h2>
+        <div class="form-group">
+            <label>英単語</label>
+            <input type="text" id="target-word">
+        </div>
+        <div class="form-group">
+            <label>意味</label>
+            <input type="text" id="target-meaning">
+        </div>
+        <button id="submit-btn" onclick="handleFormSubmit()" style="background: #6366f1;">登録する</button>
+        <button id="cancel-btn" onclick="cancelEdit()" style="background: #94a3b8; display: none;">キャンセル</button>
+    </div>
+
+    <div class="card">
+        <h2>登録済みリスト</h2>
+        <div id="vocab-list" class="word-list"></div>
+    </div>
+
+</div>
+
+<script>
+    let currentCardId = null;   
+    let editingCardId = null;   
+    let editingLevel = 1;       
+
+    window.onload = loadWordList;
+
+    async function loadQuiz() {
+        document.getElementById('start-btn').style.display = 'none';
+        document.getElementById('meaning-text').style.display = 'none';
+        document.getElementById('result-actions').style.display = 'none';
+        document.getElementById('answer-btn').style.display = 'block';
+        document.getElementById('quiz-area').style.display = 'block';
+        try {
+            const res = await fetch('/cards/quiz?_=' + new Date().getTime());
+            const data = await res.json();
+            document.getElementById('message').innerText = data.message;
+            
+            if (data.card) {
+                document.getElementById('word-text').innerText = data.card.word;
+                document.getElementById('meaning-text').innerText = data.card.meaning;
+                currentCardId = data.card.id;
+            } else {
+                document.getElementById('quiz-area').style.display = 'none';
+                document.getElementById('start-btn').style.display = 'block';
+                document.getElementById('start-btn').innerText = 'もう一度チェック';
+                currentCardId = null;
+            }
+        } catch (e) { 
+            document.getElementById('word-text').innerText = '通信エラーが発生しました'; 
+        }
+    }
+
+    function showAnswer() {
+        document.getElementById('meaning-text').style.display = 'block';
+        document.getElementById('answer-btn').style.display = 'none';
+        document.getElementById('result-actions').style.display = 'flex';
+    }
+
+    async function submitResult(isCorrect) {
+        if (!currentCardId) return;
+        try {
+            await fetch(`/cards/${currentCardId}/review`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ is_correct: isCorrect })
+            });
+            await loadWordList();
+            await loadQuiz();
+        } catch (error) {
+            alert('結果の送信に失敗しました');
+        }
+    }
+
+    async function handleFormSubmit() {
+        const word = document.getElementById('target-word').value;
+        const meaning = document.getElementById('target-meaning').value;
+        
+        if (!word || !meaning) return alert('入力してください');
+
+        try {
+            if (editingCardId) {
+                await fetch(`/cards/${editingCardId}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ word, meaning, box_level: editingLevel })
+                });
+                alert('更新しました！');
+            } else {
+                await fetch('/cards', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ word, meaning })
+                });
+                alert('登録しました！');
+            }
+            cancelEdit();
+            await loadWordList();
+        } catch (e) {
+            alert('処理に失敗しました');
+        }
+    }
+
+    function startEdit(id, word, meaning, level) {
+        editingCardId = id;
+        editingLevel = level;
+        document.getElementById('target-word').value = word;
+        document.getElementById('target-meaning').value = meaning;
+        
+        document.getElementById('form-title').innerText = "単語を編集する";
+        document.getElementById('submit-btn').innerText = "変更を保存";
+        document.getElementById('submit-btn').style.background = "#f59e0b";
+        document.getElementById('cancel-btn').style.display = "block";
+        document.getElementById('form-card').classList.add('editing-now');
+        
+        window.scrollTo({ top: 500, behavior: 'smooth' }); 
+    }
+
+    function cancelEdit() {
+        editingCardId = null;
+        document.getElementById('target-word').value = '';
+        document.getElementById('target-meaning').value = '';
+        document.getElementById('form-title').innerText = "新しい単語を追加";
+        document.getElementById('submit-btn').innerText = "登録する";
+        document.getElementById('submit-btn').style.background = "#6366f1";
+        document.getElementById('cancel-btn').style.display = "none";
+        document.getElementById('form-card').classList.remove('editing-now');
+    }
+
+    async function deleteWord(id, word) {
+        if (!confirm(`「${word}」を完全に削除しますか？`)) return;
+        try {
+            const res = await fetch(`/cards/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                alert('削除しました！');
+                if (editingCardId === id) cancelEdit();
+                await loadWordList();
+                await loadQuiz();
+            }
+        } catch (e) {
+            alert('削除に失敗しました');
+        }
+    }
+
+    async function loadWordList() {
+        try {
+            const res = await fetch('/cards');
+            const result = await res.json();
+            const listEl = document.getElementById('vocab-list');
+            listEl.innerHTML = '';
+            
+            result.data.forEach(card => {
+                const div = document.createElement('div');
+                div.className = 'word-item';
+                div.innerHTML = `
+                    <div class="word-info">
+                        <strong>${card.word}</strong><span class="badge">Lv.${card.box_level}</span><br>
+                        <small style="color:#64748b">${card.meaning}</small>
+                    </div>
+                    <div class="word-actions">
+                        <button class="list-btn edit-btn" onclick="startEdit('${card.id}', '${card.word}', '${card.meaning}', ${card.box_level})">編集</button>
+                        <button class="list-btn delete-btn" onclick="deleteWord('${card.id}', '${card.word}')">削除</button>
+                    </div>
+                `;
+                listEl.appendChild(div);
+            });
+        } catch (e) {
+            console.error('リストの取得失敗', e);
+        }
+    }
+</script>
+</body>
+</html>
